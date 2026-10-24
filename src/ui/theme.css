@@ -1,0 +1,854 @@
+/* ==========================================================================
+   EXP / Meso Tracker - clean, modern MapleStory theme.
+   Pixel identity (logo, level badge, sprite art) over a light, airy, card-based
+   layout. CSS homage; game sprite art is supplied separately by the user.
+   ========================================================================== */
+
+:root {
+  /* Surfaces */
+  --bg-top: #eaf3fe;
+  --bg-mid: #eef1f6;
+  --bg-bot: #f3ece0;
+  --card: #fffdf9;
+  --card-2: #fbf6ec;
+  --line: #ece4d4;
+  --line-strong: #ddd2bd;
+
+  /* Text */
+  --ink: #2a2a33;
+  --ink-soft: #6f6a60;
+  --ink-faint: #9b958a;
+
+  /* Raised controls / hovers / focus / bars (themeable) */
+  --raise: #ffffff;
+  --hover: #eef4ff;
+  --ring: rgba(47, 111, 224, 0.18);
+  --track: #ece4d4;
+  --bar-bg: rgba(255, 253, 249, 0.92);
+
+  /* Brand accents */
+  --accent: #2f6fe0;
+  --accent-dark: #2457b4;
+  --orange: #ff9f1c;
+  --orange-deep: #f5811f;
+  --red: #e5564a;
+  --green: #3fa34d;
+  --gold: #e8a200;
+
+  /* EXP bar */
+  --exp-top: #ffd27f;
+  --exp-mid: #ffa726;
+  --exp-bot: #f5811f;
+
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow-sm: 0 1px 2px rgba(31, 27, 20, 0.08);
+  --shadow: 0 2px 6px rgba(31, 27, 20, 0.07), 0 12px 28px rgba(31, 27, 20, 0.08);
+
+  --font-pixel: "DotGothic16", "Press Start 2P", monospace;
+  --font-display: "Poppins", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --space: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 500px at 50% -120px, #ffffff 0%, rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 42%, var(--bg-bot) 100%);
+  background-attachment: fixed;
+  padding-bottom: 84px; /* room for the pinned EXP bar */
+  -webkit-font-smoothing: antialiased;
+}
+
+.ms-app {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 22px 20px 40px;
+}
+
+.ms-empty-img {
+  width: 76px;
+  height: auto;
+  display: block;
+  margin: 0 auto 10px;
+  opacity: 0.92;
+}
+
+/* --- Banner header ------------------------------------------------------- */
+.ms-banner {
+  position: relative;
+  margin: 34px 0 30px;
+  padding: 30px 28px 26px;
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 150% at 16% 0%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(135deg, #a9e7b2 0%, #7fd0e0 52%, #cfe3ff 100%);
+  border: 1px solid rgba(80, 110, 70, 0.18);
+  box-shadow:
+    0 12px 30px rgba(31, 44, 27, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  overflow: visible;
+  min-height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Title sits centered in the banner. */
+.ms-banner-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+
+.ms-logo {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #21303a;
+}
+
+.ms-logo .accent {
+  color: var(--orange-deep);
+}
+
+.ms-banner-sub {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: rgba(33, 48, 58, 0.72);
+}
+
+/* The slime sits on the left of the banner and pops above the top edge. */
+.ms-banner-slime {
+  position: absolute;
+  left: 52px;
+  top: 12px;
+  width: 140px;
+  height: auto;
+  filter: drop-shadow(0 8px 10px rgba(18, 40, 18, 0.28));
+  pointer-events: none;
+}
+
+@media (max-width: 620px) {
+  .ms-banner-slime {
+    width: 92px;
+    left: 14px;
+    top: -4px;
+  }
+  .ms-logo {
+    font-size: 25px;
+  }
+}
+
+/* --- Cards (windows) ----------------------------------------------------- */
+.ms-window {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: var(--space);
+  overflow: hidden;
+}
+
+.ms-window-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--raise), var(--card-2));
+}
+
+/* The little accent chip that used to be a "nub". */
+.ms-window-title .nub {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--orange);
+  box-shadow: 0 0 0 3px rgba(255, 159, 28, 0.18);
+  flex: none;
+}
+
+.ms-window-title span:first-child {
+  flex: 1;
+}
+
+.ms-window-body {
+  padding: 16px;
+}
+
+/* --- Responsive grid ----------------------------------------------------- */
+.ms-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space);
+}
+
+@media (max-width: 760px) {
+  .ms-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Character ----------------------------------------------------------- */
+.ms-char {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ms-char-portrait {
+  width: 60px;
+  height: 60px;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, var(--raise), var(--card-2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.ms-char-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 6px;
+}
+
+.ms-char-name {
+  font-family: var(--font-pixel);
+  font-size: 19px;
+  margin: 0 0 5px;
+  color: var(--ink);
+}
+
+.ms-char-sub {
+  color: var(--ink-soft);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ms-char-sub .sep {
+  color: var(--ink-faint);
+}
+
+.ms-meso {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ms-coin {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe9a8, #e8a200 70%, #a86f00);
+  border: 1px solid #8a5a00;
+  display: inline-block;
+  flex: none;
+}
+
+/* --- Stat tiles ---------------------------------------------------------- */
+.ms-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.ms-stat {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  padding: 11px 13px;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+
+.ms-stat:hover {
+  border-color: var(--line-strong);
+}
+
+.ms-stat-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--ink-faint);
+}
+
+.ms-stat-value {
+  font-size: 21px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+  color: var(--ink);
+}
+
+.ms-stat-value.est {
+  color: var(--ink-soft);
+}
+
+/* --- Buttons ------------------------------------------------------------- */
+.ms-btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+  border: none;
+  border-radius: 10px;
+  padding: 9px 15px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: filter 0.12s ease, transform 0.05s ease, box-shadow 0.12s ease;
+}
+
+.ms-btn:hover {
+  filter: brightness(1.06);
+  box-shadow: var(--shadow);
+}
+
+.ms-btn:active {
+  transform: translateY(1px);
+}
+
+.ms-btn.secondary {
+  color: var(--ink);
+  background: var(--raise);
+  border: 1px solid var(--line-strong);
+}
+
+.ms-btn.danger {
+  background: linear-gradient(180deg, #ee6a5f, var(--red));
+}
+
+.ms-btn:disabled {
+  filter: grayscale(0.5) opacity(0.6);
+  cursor: default;
+}
+
+.ms-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+/* --- Upload dropzone ----------------------------------------------------- */
+.ms-drop {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  padding: 28px;
+  text-align: center;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.ms-drop:hover {
+  border-color: var(--accent);
+}
+
+.ms-drop.drag {
+  border-color: var(--accent);
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.ms-drop strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+/* --- Inline / stepper ---------------------------------------------------- */
+.ms-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ms-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--raise);
+}
+
+.ms-stepper button {
+  border: none;
+  background: var(--raise);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 16px;
+  width: 30px;
+  height: 32px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.ms-stepper button:hover {
+  background: var(--hover);
+}
+
+.ms-stepper .val {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  padding: 0 6px;
+  line-height: 32px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+input[type="number"] {
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--raise);
+}
+
+input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+/* --- Records table ------------------------------------------------------- */
+.ms-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+table.ms-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.ms-table th {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--ink-faint);
+  background: var(--card-2);
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+table.ms-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+table.ms-table tr:last-child td {
+  border-bottom: none;
+}
+
+table.ms-table tr:hover td {
+  background: var(--hover);
+}
+
+table.ms-table input {
+  width: 100%;
+  min-width: 56px;
+  border: 1px solid transparent;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+
+table.ms-table input:hover {
+  border-color: var(--line);
+}
+
+table.ms-table input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--raise);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.ms-del {
+  border: 1px solid var(--line-strong);
+  background: var(--raise);
+  color: var(--red);
+  font-weight: 700;
+  border-radius: 7px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.ms-del:hover {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+
+.ms-empty {
+  text-align: center;
+  color: var(--ink-faint);
+  padding: 22px;
+}
+
+/* --- EXP bar (pinned bottom) -------------------------------------------- */
+.ms-expbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  background: var(--bar-bg);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line-strong);
+  box-shadow: 0 -4px 20px rgba(31, 27, 20, 0.08);
+  z-index: 50;
+}
+
+.ms-level-badge {
+  font-family: var(--font-pixel);
+  font-size: 13px;
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+  border-radius: 9px;
+  padding: 8px 12px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.ms-expbar-track {
+  position: relative;
+  flex: 1;
+  height: 20px;
+  background: var(--track);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.ms-expbar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(180deg, var(--exp-top), var(--exp-mid) 55%, var(--exp-bot));
+  border-radius: 10px 0 0 10px;
+  transition: width 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.ms-expbar-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4a3410;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.ms-expbar-side {
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 170px;
+  text-align: right;
+}
+
+/* --- Status line --------------------------------------------------------- */
+.ms-status {
+  min-height: 18px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-top: 10px;
+}
+
+.ms-status.busy {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* --- Modal / region picker ---------------------------------------------- */
+.ms-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 14, 0.5);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 22px;
+}
+
+.ms-modal {
+  width: min(1120px, 96vw);
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+}
+
+.ms-modal .ms-window-body {
+  overflow: auto;
+}
+
+.ms-picker-scroll {
+  overflow: auto;
+  max-height: 60vh;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #2a2a2a;
+}
+
+.ms-picker-stage {
+  position: relative;
+  display: block;
+  width: 100%;
+  line-height: 0;
+}
+
+.ms-picker-stage img {
+  width: 100%;
+  max-width: none;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.ms-zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ms-zoom-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.ms-zoom-val {
+  min-width: 48px;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ms-zoom-row .ms-btn {
+  padding: 5px 12px;
+}
+
+.ms-region-box {
+  position: absolute;
+  border: 2px solid;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.ms-region-label {
+  position: absolute;
+  top: -17px;
+  left: -2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 4px 4px 0 0;
+  white-space: nowrap;
+}
+
+.ms-field-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ms-field-tab {
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 7px 13px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--raise);
+  color: var(--ink);
+  transition: filter 0.1s ease;
+}
+
+.ms-field-tab:hover {
+  filter: brightness(0.98);
+}
+
+.ms-field-tab.active {
+  color: #fff;
+  border-color: transparent;
+}
+
+.ms-picker-hint {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 4px 0 12px;
+}
+
+.ms-picker-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.ms-test-out {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card-2);
+  font-size: 13px;
+  white-space: pre-wrap;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+input[type="file"] {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* --- Theme toggle button ------------------------------------------------- */
+.ms-theme-toggle {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 2;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  color: var(--ink);
+  background: var(--raise);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: filter 0.12s ease;
+}
+
+.ms-theme-toggle:hover {
+  filter: brightness(1.04);
+}
+
+/* ==========================================================================
+   DARK THEME - black + green. The base is a lightened near-black (not pure
+   #000) so panels and text stay easy to read; green is the accent.
+   ========================================================================== */
+[data-theme="dark"] {
+  --bg-top: #141a18;
+  --bg-mid: #101614;
+  --bg-bot: #0c110f;
+
+  --card: #1b2220;
+  --card-2: #212a27;
+  --raise: #283330;
+  --line: #2e3a35;
+  --line-strong: #3c4a44;
+
+  --ink: #e9f1ec;
+  --ink-soft: #a7b8af;
+  --ink-faint: #76867e;
+
+  --accent: #35c06a;
+  --accent-dark: #249a52;
+  --ring: rgba(53, 192, 106, 0.28);
+  --hover: #22302b;
+  --track: #223029;
+  --bar-bg: rgba(16, 22, 20, 0.92);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(1200px 520px at 50% -140px, rgba(53, 192, 106, 0.12) 0%, rgba(0, 0, 0, 0) 60%),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg-bot) 100%);
+}
+
+[data-theme="dark"] .ms-banner {
+  background:
+    radial-gradient(120% 150% at 16% 0%, rgba(53, 192, 106, 0.22), rgba(0, 0, 0, 0) 55%),
+    linear-gradient(135deg, #16211c 0%, #123025 52%, #0f1a1b 100%);
+  border-color: rgba(53, 192, 106, 0.28);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .ms-logo {
+  color: #eaf5ee;
+}
+
+[data-theme="dark"] .ms-logo .accent {
+  color: var(--accent);
+}
+
+[data-theme="dark"] .ms-banner-sub {
+  color: rgba(224, 240, 231, 0.75);
+}
