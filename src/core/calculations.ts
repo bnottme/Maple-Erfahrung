@@ -8,6 +8,7 @@
  * unused parameters are dropped here; behaviour is identical.
  */
 
+import { expToNext } from "./expTable.js";
 import type { ScreenshotRecord } from "./models.js";
 
 // ---------------------------------------------------------------------------
@@ -82,6 +83,8 @@ export interface SessionStats {
   expPerHour: number;
   mesoCurrent: number | null;
   mesoGained: number;
+  /** Gross meso gained per hour over the session span (0 if not computable). */
+  mesoPerHour: number;
 }
 
 export function emptySessionStats(): SessionStats {
@@ -94,6 +97,7 @@ export function emptySessionStats(): SessionStats {
     expPerHour: 0,
     mesoCurrent: null,
     mesoGained: 0,
+    mesoPerHour: 0,
   };
 }
 
@@ -102,22 +106,12 @@ function sortedRecords(records: readonly ScreenshotRecord[]): ScreenshotRecord[]
 }
 
 /**
- * Sum positive EXP deltas between consecutive readings.
- *
- * Summing only positive increments means a level-up (which resets the displayed
- * current-level EXP to a small number) does not subtract from the running
- * total. Readings without an EXP value are skipped.
+ * Total EXP gained across all readings, correctly accounting for level-ups.
+ * Readings without an EXP value are skipped.
  */
 export function computeExpGained(records: readonly ScreenshotRecord[]): number {
   const ordered = sortedRecords(records).filter((r) => r.exp !== null);
-  let gained = 0;
-  for (let i = 1; i < ordered.length; i++) {
-    const delta = (ordered[i].exp as number) - (ordered[i - 1].exp as number);
-    if (delta > 0) {
-      gained += delta;
-    }
-  }
-  return gained;
+  return sumGains(ordered);
 }
 
 /** Net meso change: last reading minus first reading (can be negative). */
@@ -151,6 +145,9 @@ export function computeStats(
   const firstTs = ordered[0].capturedAt;
   const lastTs = ordered[ordered.length - 1].capturedAt;
   const elapsed = Math.max(0, lastTs - firstTs);
+  const mesoGained = computeMesoGained(ordered);
+  const mesoPerHour =
+    elapsed >= MIN_RATE_SPAN_SECONDS ? mesoGained / (elapsed / 3600.0) : 0;
 
   return {
     screenshotCount: ordered.length,
@@ -160,7 +157,8 @@ export function computeStats(
     expGained: computeExpGained(ordered),
     expPerHour: overallExpRate(ordered),
     mesoCurrent: latestMeso(ordered),
-    mesoGained: computeMesoGained(ordered),
+    mesoGained,
+    mesoPerHour,
   };
 }
 
@@ -202,7 +200,7 @@ export function overallExpRate(records: readonly ScreenshotRecord[]): number {
   if (span < MIN_RATE_SPAN_SECONDS) {
     return 0;
   }
-  const gained = positiveDeltaSum(expRecords);
+  const gained = sumGains(expRecords);
   return gained / (span / 3600.0);
 }
 
@@ -278,7 +276,7 @@ export function windowedStats(
   const cutoff = reference - windowSeconds;
   const inWindow = expRecords.filter((r) => r.capturedAt >= cutoff);
 
-  const gained = inWindow.length >= 2 ? positiveDeltaSum(inWindow) : 0;
+  const gained = inWindow.length >= 2 ? sumGains(inWindow) : 0;
   const span =
     inWindow.length >= 2
       ? inWindow[inWindow.length - 1].capturedAt - inWindow[0].capturedAt
@@ -319,14 +317,96 @@ export function windowedStats(
   };
 }
 
-/** Sum of positive EXP increases between consecutive readings. */
-function positiveDeltaSum(records: readonly ScreenshotRecord[]): number {
-  let total = 0;
-  for (let i = 1; i < records.length; i++) {
-    const delta = (records[i].exp as number) - (records[i - 1].exp as number);
-    if (delta > 0) {
-      total += delta;
+/** EXP still needed to finish `level` given the in-level EXP. null if off-table. */
+function levelRemaining(level: number, expInLevel: number): number | null {
+  const tnl = expToNext(level);
+  if (tnl === null) {
+    return null;
+  }
+  return Math.max(0, tnl - Math.max(0, expInLevel));
+}
+
+/**
+ * EXP gained between two consecutive readings (non-negative), accounting for
+ * level-ups. MapleStory shows the current-LEVEL EXP, which resets to a small
+ * number on level-up, so a naive delta would lose everything earned finishing
+ * the old level and entering the new one.
+ *
+ *   - Level increased (known on both): finish old level + full levels between +
+ *     progress into the new level, using the EXP table.
+ *   - EXP went up at the same (or unknown) level: plain difference.
+ *   - EXP dropped with only the old level known: assume one level-up
+ *     (finish old level + new-level progress).
+ *   - EXP dropped with no level info: can't reconstruct the lost remainder, so
+ *     count 0 (avoids inflating from OCR noise) - same as the old behaviour.
+ */
+function gainBetween(prev: ScreenshotRecord, curr: ScreenshotRecord): number {
+  const pe = prev.exp as number;
+  const ce = curr.exp as number;
+  const pl = prev.level;
+  const cl = curr.level;
+
+  if (pl !== null && cl !== null && cl > pl) {
+    const rem = levelRemaining(pl, pe);
+    if (rem === null) {
+      return Math.max(0, ce - pe);
+    }
+    let full = 0;
+    let ok = true;
+    for (let l = pl + 1; l < cl; l++) {
+      const tnl = expToNext(l);
+      if (tnl === null) {
+        ok = false;
+        break;
+      }
+      full += tnl;
+    }
+    return ok ? rem + full + ce : rem + ce;
+  }
+
+  if (ce >= pe) {
+    return ce - pe;
+  }
+
+  // EXP dropped. Only treat it as a level-up when the new level is unknown; if
+  // the level is known and didn't increase, the drop is OCR noise -> count 0.
+  if (cl === null && pl !== null) {
+    const rem = levelRemaining(pl, pe);
+    if (rem !== null) {
+      return rem + ce;
     }
   }
+  return 0;
+}
+
+/** Sum EXP gained across consecutive readings, level-up aware. */
+function sumGains(records: readonly ScreenshotRecord[]): number {
+  let total = 0;
+  for (let i = 1; i < records.length; i++) {
+    total += gainBetween(records[i - 1], records[i]);
+  }
   return total;
+}
+
+/**
+ * Cumulative EXP-gained over time (level-up aware). Returns a monotonic series
+ * of { capturedAt, exp } points for plotting an EXP-over-time curve, starting
+ * at 0 on the first reading. Readings without an EXP value are skipped.
+ */
+export function cumulativeExpSeries(
+  records: readonly ScreenshotRecord[],
+): { capturedAt: number; exp: number }[] {
+  const ordered = sortedRecords(records).filter((r) => r.exp !== null);
+  if (ordered.length === 0) {
+    return [];
+  }
+  const series: { capturedAt: number; exp: number }[] = [
+    { capturedAt: ordered[0].capturedAt, exp: 0 },
+  ];
+  let total = 0;
+  for (let i = 1; i < ordered.length; i++) {
+    total += gainBetween(ordered[i - 1], ordered[i]);
+    series.push({ capturedAt: ordered[i].capturedAt, exp: total });
+  }
+  return series;
 }

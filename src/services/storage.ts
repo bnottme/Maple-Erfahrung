@@ -15,6 +15,7 @@ const DB_NAME = "exp-meso-tracker";
 const DB_VERSION = 1;
 const STORE_NAME = "state";
 const STATE_KEY = "singleton";
+const SESSIONS_KEY = "sessions";
 
 /** Raised when the persisted state exists but can't be read/parsed. */
 export class StorageError extends Error {
@@ -83,6 +84,40 @@ export async function saveState(state: Record<string, unknown>): Promise<void> {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(new StorageError("Could not write state", tx.error));
       tx.onabort = () => reject(new StorageError("State write aborted", tx.error));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** Load the saved-sessions list (separate from live state). Empty if none. */
+export async function loadSessions(): Promise<unknown[]> {
+  const db = await openDb();
+  try {
+    return await new Promise<unknown[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).get(SESSIONS_KEY);
+      req.onsuccess = () => {
+        const value = req.result;
+        resolve(Array.isArray(value) ? value : []);
+      };
+      req.onerror = () => reject(new StorageError("Could not read sessions", req.error));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** Persist the saved-sessions list, replacing the previous value. */
+export async function saveSessions(list: unknown[]): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      tx.objectStore(STORE_NAME).put(list, SESSIONS_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(new StorageError("Could not write sessions", tx.error));
+      tx.onabort = () => reject(new StorageError("Sessions write aborted", tx.error));
     });
   } finally {
     db.close();

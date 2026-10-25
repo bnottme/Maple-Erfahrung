@@ -4,7 +4,7 @@ import { defineConfig } from "vite";
 // in the browser. `base` is relative so the built site works on GitHub Pages,
 // Cloudflare Pages, Netlify, or any static host regardless of sub-path.
 export default defineConfig({
-  base: '/Maple-Erfahrung/',
+  base: "./",
   build: {
     target: "es2020",
     outDir: "dist",

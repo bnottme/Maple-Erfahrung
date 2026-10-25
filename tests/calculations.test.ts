@@ -78,6 +78,44 @@ describe("computeExpGained", () => {
     const records = [rec(0, { exp: 100 }), rec(10), rec(20, { exp: 300 })];
     expect(computeExpGained(records)).toBe(200);
   });
+
+  it("counts EXP earned across a level-up using the EXP table", () => {
+    // Level 1 needs 15 to reach level 2. From L1 exp 10 -> L2 exp 5:
+    // finish L1 (15 - 10 = 5) + progress into L2 (5) = 10.
+    const records = [
+      rec(0, { exp: 10, level: 1 }),
+      rec(10, { exp: 5, level: 2 }),
+    ];
+    expect(computeExpGained(records)).toBe(10);
+  });
+
+  it("counts EXP across multiple levels", () => {
+    // L1 exp 0 -> L3 exp 0: (15 - 0) + full L2 (34) + 0 = 49.
+    const records = [
+      rec(0, { exp: 0, level: 1 }),
+      rec(10, { exp: 0, level: 3 }),
+    ];
+    expect(computeExpGained(records)).toBe(49);
+  });
+
+  it("assumes a single level-up when the new level is unknown", () => {
+    // L1 exp 10 -> exp 5 with level unread: finish L1 (5) + 5 = 10.
+    const records = [
+      rec(0, { exp: 10, level: 1 }),
+      rec(10, { exp: 5 }),
+    ];
+    expect(computeExpGained(records)).toBe(10);
+  });
+
+  it("ignores an EXP drop that is not a level-up (same level)", () => {
+    // Same level, exp dropped -> OCR noise, counts 0 for that step.
+    const records = [
+      rec(0, { exp: 100, level: 5 }),
+      rec(10, { exp: 40, level: 5 }),
+      rec(20, { exp: 90, level: 5 }),
+    ];
+    expect(computeExpGained(records)).toBe(50); // only the 40 -> 90 rise
+  });
 });
 
 describe("meso helpers", () => {

@@ -31,10 +31,17 @@ import {
   type RegionSet,
   type ScreenshotRecord,
 } from "../core/models.js";
-import { resolveCaptureTime } from "../core/time.js";
+import { resolveCaptureTimeWithSource } from "../core/time.js";
+import { itemById } from "../data/items.js";
 import { loadImage } from "../services/image.js";
 import { extractValues, type OcrEngine } from "../services/ocr.js";
-import { DebouncedSaver, loadState, type StorageError } from "../services/storage.js";
+import {
+  DebouncedSaver,
+  loadSessions,
+  loadState,
+  saveSessions,
+  type StorageError,
+} from "../services/storage.js";
 
 /** Which of the four OCR regions. */
 export type RegionKey = keyof RegionSet;
@@ -51,11 +58,46 @@ export interface GoalStats {
   reached: boolean;
 }
 
+/** One consumable line the user is tracking spend for. */
+export interface ConsumableLine {
+  itemId: string;
+  quantity: number;
+}
+
+/** Compact summary stored with a saved grind (for lists + dashboard). */
+export interface SavedSessionSummary {
+  screenshotCount: number;
+  elapsedSeconds: number;
+  expGained: number;
+  expPerHour: number;
+  mesoGained: number;
+  mesoSpent: number;
+  netMeso: number;
+  characterName: string | null;
+  level: number | null;
+  /** Map the grind took place on (free text / from the map DB), or null. */
+  currentMapName: string | null;
+}
+
+/** A saved grind the user can revisit or reload. */
+export interface SavedSession {
+  id: string;
+  name: string;
+  savedAt: number; // epoch seconds
+  summary: SavedSessionSummary;
+  records: ScreenshotRecord[];
+  consumables: ConsumableLine[];
+  /** Free-text note / tag (e.g. "2x EXP event"). */
+  note: string;
+}
+
 /** A full snapshot the UI can render from in one go. */
 export interface SessionView {
   records: ScreenshotRecord[];
   regions: RegionSet;
   desiredLevel: number;
+  /** Map the user is currently grinding on, or null. */
+  currentMapName: string | null;
   windowIndex: number;
   windowMinutes: number;
   tracking: boolean;
@@ -66,6 +108,14 @@ export interface SessionView {
   latestName: string | null;
   latestLevel: number | null;
   latestRecord: ScreenshotRecord | null;
+  /** Consumables the user logged (item id + quantity used this session). */
+  consumables: ConsumableLine[];
+  /** Total meso spent on the logged consumables. */
+  mesoSpent: number;
+  /** Meso gained minus meso spent on consumables. */
+  netMeso: number;
+  /** Saved grinds, newest first. */
+  savedSessions: SavedSession[];
 }
 
 type Listener = (view: SessionView) => void;
@@ -87,6 +137,12 @@ export class TrackerSession {
   private tracking = false;
   private windowIndex = DEFAULT_WINDOW_INDEX;
   private desiredLevel = DEFAULT_DESIRED_LEVEL;
+  /** Map the user is grinding on this session (name from the map DB). */
+  private currentMapName: string | null = null;
+  /** itemId -> quantity used this session. */
+  private consumables = new Map<string, number>();
+  /** Saved grinds, newest first. */
+  private savedSessions: SavedSession[] = [];
 
   private readonly listeners = new Set<Listener>();
   private readonly saver: DebouncedSaver;
@@ -120,8 +176,21 @@ export class TrackerSession {
    */
   async addFiles(files: Iterable<File>): Promise<ScreenshotRecord[]> {
     const added: ScreenshotRecord[] = [];
+    // Spacing for images with no real timestamp (bitmaps pasted from a snip
+    // tool). Keeps a batch / successive pastes in order instead of colliding
+    // at the same instant; the user can still fine-tune times per record.
+    const FALLBACK_GAP = 60;
+    let fallbackCursor = this.records.reduce((m, r) => Math.max(m, r.capturedAt), 0);
     for (const file of files) {
-      const capturedAt = resolveCaptureTime(file);
+      const { capturedAt: resolved, source } = resolveCaptureTimeWithSource(file);
+      let capturedAt: number;
+      if (source === "now") {
+        capturedAt = Math.max(fallbackCursor + FALLBACK_GAP, resolved);
+        fallbackCursor = capturedAt;
+      } else {
+        capturedAt = resolved;
+        fallbackCursor = Math.max(fallbackCursor, resolved);
+      }
       let record: ScreenshotRecord = {
         id: newId(),
         fileName: file.name,
@@ -178,6 +247,17 @@ export class TrackerSession {
     this.emit();
   }
 
+  /** Set the map being grinded (null clears it). */
+  setCurrentMapName(name: string | null): void {
+    const next = name && name.trim() ? name.trim() : null;
+    if (next === this.currentMapName) {
+      return;
+    }
+    this.currentMapName = next;
+    this.scheduleSave();
+    this.emit();
+  }
+
   cycleWindow(): void {
     this.windowIndex = (this.windowIndex + 1) % WINDOW_CHOICES_MINUTES.length;
     this.scheduleSave();
@@ -226,12 +306,181 @@ export class TrackerSession {
     }
   }
 
+  /** Set how many of an item were used this session (0 removes the line). */
+  setConsumable(itemId: string, quantity: number): void {
+    const q = Math.max(0, Math.floor(quantity));
+    if (q <= 0) {
+      this.consumables.delete(itemId);
+    } else {
+      this.consumables.set(itemId, q);
+    }
+    this.scheduleSave();
+    this.emit();
+  }
+
+  removeConsumable(itemId: string): void {
+    if (this.consumables.delete(itemId)) {
+      this.scheduleSave();
+      this.emit();
+    }
+  }
+
+  private computeMesoSpent(): number {
+    let total = 0;
+    for (const [id, qty] of this.consumables) {
+      const item = itemById(id);
+      if (item && item.mesoCost !== null) {
+        total += item.mesoCost * qty;
+      }
+    }
+    return total;
+  }
+
   reset(): void {
     this.records = [];
     this.sessionStart = null;
     this.tracking = false;
+    this.consumables.clear();
+    this.currentMapName = null;
     this.scheduleSave();
     this.emit();
+  }
+
+  // --------------------------------------------------------- saved sessions
+  /** Snapshot the current grind as a named saved session (newest first). */
+  saveCurrentSession(name: string): SavedSession {
+    const stats = this.getStats();
+    const mesoSpent = this.computeMesoSpent();
+    const saved: SavedSession = {
+      id: newId(),
+      name: name.trim() || this.defaultSessionName(),
+      savedAt: Date.now() / 1000,
+      summary: {
+        screenshotCount: stats.screenshotCount,
+        elapsedSeconds: stats.elapsedSeconds,
+        expGained: stats.expGained,
+        expPerHour: stats.expPerHour,
+        mesoGained: stats.mesoGained,
+        mesoSpent,
+        netMeso: stats.mesoGained - mesoSpent,
+        characterName: this.latestValue("characterName"),
+        level: this.latestValue("level"),
+        currentMapName: this.currentMapName,
+      },
+      records: this.records.map((r) => ({ ...r })),
+      consumables: [...this.consumables.entries()].map(([itemId, quantity]) => ({
+        itemId,
+        quantity,
+      })),
+      note: "",
+    };
+    this.savedSessions.unshift(saved);
+    void this.persistSessions();
+    this.emit();
+    return saved;
+  }
+
+  deleteSavedSession(id: string): void {
+    const before = this.savedSessions.length;
+    this.savedSessions = this.savedSessions.filter((s) => s.id !== id);
+    if (this.savedSessions.length !== before) {
+      void this.persistSessions();
+      this.emit();
+    }
+  }
+
+  /** Set the free-text note/tag on a saved session. */
+  setSessionNote(id: string, note: string): void {
+    const s = this.savedSessions.find((x) => x.id === id);
+    if (!s) return;
+    s.note = note.trim();
+    void this.persistSessions();
+    this.emit();
+  }
+
+  /** Replace the current live grind with a saved one. */
+  loadSavedSession(id: string): void {
+    const s = this.savedSessions.find((x) => x.id === id);
+    if (!s) {
+      return;
+    }
+    this.records = s.records.map((r) => ({ ...r }));
+    this.consumables = new Map(s.consumables.map((c) => [c.itemId, c.quantity]));
+    this.currentMapName = s.summary.currentMapName;
+    this.scheduleSave();
+    this.emit();
+  }
+
+  private defaultSessionName(): string {
+    const name = this.latestValue("characterName");
+    const when = new Date().toLocaleDateString();
+    return name ? `${name} - ${when}` : `Grind - ${when}`;
+  }
+
+  private async persistSessions(): Promise<void> {
+    try {
+      await saveSessions(this.savedSessions.map(savedSessionToDict));
+    } catch {
+      /* storage may be unavailable; keep working in-memory */
+    }
+  }
+
+  /** Serialize all saved grinds to a JSON backup string. */
+  exportSessionsJson(): string {
+    return JSON.stringify(
+      {
+        app: "maple-erfahrung",
+        kind: "sessions-backup",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        sessions: this.savedSessions.map(savedSessionToDict),
+      },
+      null,
+      2,
+    );
+  }
+
+  /**
+   * Merge saved grinds from a JSON backup. New ids are appended (existing ones
+   * are skipped so re-importing is safe). Returns how many were added.
+   */
+  importSessionsJson(text: string): { added: number; error?: string } {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { added: 0, error: "That file isn't valid JSON." };
+    }
+    const root = parsed as Record<string, unknown>;
+    const rawList = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(root?.sessions)
+        ? (root.sessions as unknown[])
+        : null;
+    if (!rawList) {
+      return { added: 0, error: "No sessions found in that file." };
+    }
+
+    const existing = new Set(this.savedSessions.map((s) => s.id));
+    let added = 0;
+    for (const raw of rawList) {
+      if (!raw || typeof raw !== "object") continue;
+      try {
+        const session = savedSessionFromDict(raw as Record<string, unknown>);
+        if (existing.has(session.id)) continue;
+        this.savedSessions.push(session);
+        existing.add(session.id);
+        added++;
+      } catch {
+        /* skip malformed entries */
+      }
+    }
+    if (added > 0) {
+      this.savedSessions.sort((a, b) => b.savedAt - a.savedAt);
+      void this.persistSessions();
+      this.emit();
+    }
+    return { added };
   }
 
   // ----------------------------------------------------------- selectors
@@ -274,20 +523,30 @@ export class TrackerSession {
   }
 
   getView(): SessionView {
+    const stats = this.getStats();
+    const mesoSpent = this.computeMesoSpent();
     return {
       records: [...this.records].sort((a, b) => a.capturedAt - b.capturedAt),
       regions: { ...this.regions },
       desiredLevel: this.desiredLevel,
+      currentMapName: this.currentMapName,
       windowIndex: this.windowIndex,
       windowMinutes: WINDOW_CHOICES_MINUTES[this.windowIndex],
       tracking: this.tracking,
       sessionStart: this.sessionStart,
-      stats: this.getStats(),
+      stats,
       window: this.getWindowStats(),
       goal: this.getGoalStats(),
       latestName: this.latestValue("characterName"),
       latestLevel: this.latestValue("level"),
       latestRecord: this.latestRecord(),
+      consumables: [...this.consumables.entries()].map(([itemId, quantity]) => ({
+        itemId,
+        quantity,
+      })),
+      mesoSpent,
+      netMeso: stats.mesoGained - mesoSpent,
+      savedSessions: this.savedSessions.map((s) => ({ ...s })),
     };
   }
 
@@ -365,6 +624,7 @@ export class TrackerSession {
       tracking: this.tracking,
       windowIndex: this.windowIndex,
       desiredLevel: this.desiredLevel,
+      currentMapName: this.currentMapName,
       regions: {
         exp: this.regions.exp ? regionToDict(this.regions.exp) : null,
         meso: this.regions.meso ? regionToDict(this.regions.meso) : null,
@@ -372,6 +632,7 @@ export class TrackerSession {
         name: this.regions.name ? regionToDict(this.regions.name) : null,
       },
       records: this.records.map(screenshotRecordToDict),
+      consumables: Object.fromEntries(this.consumables),
     };
   }
 
@@ -381,13 +642,25 @@ export class TrackerSession {
    * rather than silently wiping their history.
    */
   async load(): Promise<{ loaded: boolean; error?: StorageError }> {
+    // Saved grinds load independently of the live state.
+    try {
+      const rawSessions = await loadSessions();
+      this.savedSessions = rawSessions.map((r) =>
+        savedSessionFromDict(r as Record<string, unknown>),
+      );
+    } catch {
+      /* ignore unreadable sessions list */
+    }
+
     let state: Record<string, unknown> | null;
     try {
       state = await loadState();
     } catch (err) {
+      this.emit();
       return { loaded: false, error: err as StorageError };
     }
     if (!state) {
+      this.emit();
       return { loaded: false };
     }
     this.applyState(state);
@@ -409,6 +682,10 @@ export class TrackerSession {
         : DEFAULT_WINDOW_INDEX;
     this.desiredLevel =
       typeof state.desiredLevel === "number" ? state.desiredLevel : DEFAULT_DESIRED_LEVEL;
+    this.currentMapName =
+      typeof state.currentMapName === "string" && state.currentMapName
+        ? state.currentMapName
+        : null;
 
     const regions = (state.regions ?? {}) as Record<string, unknown>;
     this.regions = {
@@ -422,7 +699,60 @@ export class TrackerSession {
     this.records = records.map((r) =>
       screenshotRecordFromDict(r as Record<string, unknown>),
     );
+
+    this.consumables = new Map();
+    const cons = state.consumables;
+    if (cons && typeof cons === "object") {
+      for (const [id, qty] of Object.entries(cons as Record<string, unknown>)) {
+        const q = Math.floor(Number(qty));
+        if (Number.isFinite(q) && q > 0) {
+          this.consumables.set(id, q);
+        }
+      }
+    }
   }
+}
+
+function savedSessionToDict(s: SavedSession): Record<string, unknown> {
+  return {
+    id: s.id,
+    name: s.name,
+    savedAt: s.savedAt,
+    summary: s.summary,
+    records: s.records.map(screenshotRecordToDict),
+    consumables: s.consumables,
+    note: s.note,
+  };
+}
+
+function savedSessionFromDict(d: Record<string, unknown>): SavedSession {
+  const sum = (d.summary ?? {}) as Record<string, unknown>;
+  const num = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const records = Array.isArray(d.records) ? d.records : [];
+  const cons = Array.isArray(d.consumables) ? d.consumables : [];
+  return {
+    id: String(d.id),
+    name: String(d.name ?? "Grind"),
+    savedAt: num(d.savedAt) || Date.now() / 1000,
+    summary: {
+      screenshotCount: num(sum.screenshotCount),
+      elapsedSeconds: num(sum.elapsedSeconds),
+      expGained: num(sum.expGained),
+      expPerHour: num(sum.expPerHour),
+      mesoGained: num(sum.mesoGained),
+      mesoSpent: num(sum.mesoSpent),
+      netMeso: num(sum.netMeso),
+      characterName: (sum.characterName as string) || null,
+      level: sum.level === null || sum.level === undefined ? null : num(sum.level),
+      currentMapName: (sum.currentMapName as string) || null,
+    },
+    records: records.map((r) => screenshotRecordFromDict(r as Record<string, unknown>)),
+    consumables: cons.map((c) => {
+      const cc = c as Record<string, unknown>;
+      return { itemId: String(cc.itemId), quantity: num(cc.quantity) };
+    }),
+    note: typeof d.note === "string" ? d.note : "",
+  };
 }
 
 /** Quote a CSV cell if it contains a comma, quote or newline. */
